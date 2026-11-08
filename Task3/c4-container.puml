@@ -1,0 +1,59 @@
+@startuml
+!include <C4/C4_Container>
+
+AddElementTag("new", $borderColor="#F2A900", $borderThickness="4", $legendText="новый контейнер")
+
+title Открытие депозитов онлайн (MVP): диаграмма контейнеров
+
+Person(client, "Клиент", "Смотрит депозиты и ставки, подаёт заявку")
+Person(cc_manager, "Менеджер кол-центра", "Разбирает заявки с сайта")
+Person(front, "Сотрудник отделения", "Идентифицирует нового клиента")
+Person(deposit_back, "Менеджер бэк-офиса депозитов", "Согласует заявки")
+Person(credit_back, "Сотрудник бэк-офиса кредитов", "Ведёт базовые ставки")
+
+System(site, "Сайт", "PHP, React. Показывает ставки, принимает заявки")
+System(cc, "Система кол-центра", "Java, PostgreSQL. Заявки с сайта для менеджеров")
+
+System_Boundary(ib_b, "Интернет-банк") {
+    Container(ib_app, "Интернет-банк", "ASP.NET MVC, .NET Framework 4.5", "Монолит на платформе подрядчика. Добавляются страницы депозитов, ядро не меняется")
+    ContainerDb(ib_db, "База интернет-банка", "MS SQL", "Данные интернет-банка")
+    Container(dep_svc, "Сервис депозитов", ".NET", "Ставки, заявки, СМС-коды и уведомления", $tags="new")
+    ContainerDb(dep_db, "База сервиса депозитов", "MS SQL", "Заявки и копия ставок", $tags="new")
+}
+
+ContainerQueue(kafka, "Kafka", "Apache Kafka", "Заявки, статусы заявок, ставки", $tags="new")
+
+System_Boundary(abs_b, "АБС") {
+    Container(abs_int, "Сервис интеграции АБС", "Java, Spring Boot", "Заводит заявки в АБС порциями, выгружает изменения ставок и статусов", $tags="new")
+    Container(abs_client, "Клиент АБС", "Delphi", "Рабочее место сотрудников. Новый модуль ставок и очередь заявок")
+    ContainerDb(abs_db, "База АБС", "Oracle, PL/SQL", "Счета, депозиты, ставки. Логика в процедурах PL/SQL")
+}
+
+System_Ext(sms, "СМС-шлюз телеком-оператора", "Не меняется")
+System_Ext(telecom, "Телеком-оператор", "Доставляет СМС")
+
+Rel(client, site, "Смотрит ставки, оставляет заявку", "HTTPS")
+Rel(client, ib_app, "Смотрит ставки, подаёт заявку, вводит СМС-код", "HTTPS")
+Rel(site, dep_svc, "Берёт депозиты и ставки", "JSON/HTTPS")
+Rel(site, cc, "Передаёт заявку", "JSON/HTTPS")
+Rel(cc_manager, cc, "Разбирает заявки")
+
+Rel(ib_app, dep_svc, "Ставки, заявки, статусы", "JSON/HTTPS")
+Rel(ib_app, ib_db, "Читает и пишет", "SQL/TCP")
+Rel(ib_app, abs_db, "Платежи и счета, как сейчас", "SQL/TCP")
+Rel(dep_svc, dep_db, "Читает и пишет", "SQL/TCP")
+Rel(dep_svc, kafka, "Отправляет заявки, читает статусы и ставки", "Kafka")
+Rel(dep_svc, sms, "Отправляет СМС-коды и уведомления", "HTTPS")
+
+Rel(abs_int, kafka, "Читает заявки, отправляет статусы и ставки", "Kafka")
+Rel(abs_int, abs_db, "Кладёт заявки в очередь бэк-офиса, забирает изменения ставок и статусов", "JDBC, PL/SQL")
+Rel(abs_client, abs_db, "Заявки из очереди, ставки, открытие депозитов", "SQL/TCP")
+Rel(deposit_back, abs_client, "Согласует заявки, смотрит ставки")
+Rel(credit_back, abs_client, "Ведёт ставки и данные по риску")
+Rel(front, abs_client, "Открывает депозит после идентификации")
+
+Rel(sms, telecom, "Передаёт СМС")
+Rel(telecom, client, "Доставляет СМС")
+
+SHOW_LEGEND()
+@enduml
