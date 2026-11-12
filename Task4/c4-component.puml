@@ -1,0 +1,38 @@
+@startuml
+!include <C4/C4_Component>
+
+title Ставки для кол-центров: компоненты сервиса ставок
+
+Person(cc_op, "Оператор кол-центра банка", "Консультирует клиентов по ставкам")
+
+ContainerQueue(kafka, "Kafka", "Apache Kafka", "Топик публичных ставок, его наполняет сервис интеграции АБС")
+System(sftp, "SFTP-сервер для партнёров", "Папка на каждого партнёра, вход по ключу")
+System_Ext(pcc, "Система партнёрского кол-центра", "Забирает файл по расписанию")
+
+System_Boundary(cc_b, "Система кол-центра") {
+    Container(workplace, "Рабочее место оператора", "React", "Существующий интерфейс, добавляется раздел «Ставки по депозитам»")
+    ContainerDb(rates_db, "База ставок кол-центра", "PostgreSQL", "Текущие ставки, дата актуальности, журнал выгрузок")
+
+    Container_Boundary(svc, "Сервис ставок кол-центра [Java, Spring Boot]") {
+        Component(consumer, "RatesConsumer", "Spring Kafka", "Подписан на топик публичных ставок, сохраняет новые ставки с датой")
+        Component(repo, "RatesRepository", "Spring Data JPA", "Работа с базой ставок")
+        Component(api, "RatesController", "Spring MVC, REST", "REST API: текущие ставки и дата актуальности")
+        Component(export, "PartnerExportJob", "Spring Scheduler", "Собирает CSV после изменения ставок и каждое утро")
+        Component(sftp_client, "SftpUploader", "Spring Integration SFTP", "Загружает файл в папку партнёра")
+    }
+}
+
+Rel(cc_op, workplace, "Смотрит ставки")
+Rel(workplace, api, "Запрашивает ставки", "JSON/HTTPS")
+Rel(consumer, kafka, "Читает публичные ставки", "Kafka")
+Rel(consumer, repo, "Сохраняет ставки")
+Rel(consumer, export, "Сообщает об изменении ставок")
+Rel(api, repo, "Читает ставки")
+Rel(export, repo, "Читает ставки, пишет журнал выгрузок")
+Rel(export, sftp_client, "Передаёт готовый файл")
+Rel(repo, rates_db, "Читает и пишет", "JDBC")
+Rel(sftp_client, sftp, "Загружает CSV", "SFTP")
+Rel(pcc, sftp, "Забирает файл", "SFTP")
+
+SHOW_LEGEND()
+@enduml
